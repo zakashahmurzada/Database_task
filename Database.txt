@@ -1,0 +1,127 @@
+docker start postgres_db
+
+docker ps
+
+docker exec -it postgres_db bash
+
+psql -U postgres
+
+CREATE TABLE unnormalized_data (
+    CRN VARCHAR(50),
+    ISBN VARCHAR(50),
+    Title TEXT,
+    Authors TEXT,
+    Edition VARCHAR(50),
+    Publisher TEXT,
+    Publisher_address TEXT,
+    Pages INTEGER,
+    Year INTEGER,
+    Course_name TEXT
+);
+
+\copy unnormalized_data(CRN, ISBN, Title, Authors, Edition, Publisher, Publisher_address, Pages, Year, Course_name)
+FROM '/data/Unnormalized1.csv'
+DELIMITER ','
+CSV HEADER;
+
+SELECT * FROM unnormalized_data;
+
+-- 1NF NORMALIZATION
+
+CREATE TABLE books (
+    ISBN VARCHAR(50) PRIMARY KEY,
+    Title TEXT,
+    Edition VARCHAR(50),
+    Publisher TEXT,
+    Publisher_address TEXT,
+    Pages INTEGER,
+    Year INTEGER
+);
+
+INSERT INTO books (ISBN, Title, Edition, Publisher, Publisher_address, Pages, Year)
+SELECT DISTINCT ISBN, Title, Edition, Publisher, Publisher_address, Pages, Year
+FROM unnormalized_data;
+
+CREATE TABLE book_authors (
+    ISBN VARCHAR(50),
+    Author TEXT,
+    PRIMARY KEY (ISBN, Author),
+    FOREIGN KEY (ISBN) REFERENCES books(ISBN)
+);
+
+
+
+INSERT INTO book_authors (ISBN, Author)
+SELECT ISBN, unnest(string_to_array(Authors, ', ')) AS Author
+FROM unnormalized_data;
+
+SELECT * FROM books;
+
+SELECT * FROM book_authors;
+
+-- 2NF NORMALIZATION
+CREATE TABLE courses (
+    CRN VARCHAR(50) PRIMARY KEY,
+    Course_name TEXT
+);
+
+INSERT INTO courses (CRN, Course_name)
+SELECT DISTINCT CRN, Course_name
+FROM unnormalized_data;
+
+CREATE TABLE course_books (
+    CRN VARCHAR(50),
+    ISBN VARCHAR(50),
+    PRIMARY KEY (CRN, ISBN),
+    FOREIGN KEY (CRN) REFERENCES courses(CRN),
+    FOREIGN KEY (ISBN) REFERENCES books(ISBN)
+);
+
+INSERT INTO course_books (CRN, ISBN)
+SELECT DISTINCT CRN, ISBN
+FROM unnormalized_data;
+
+SELECT * FROM courses;
+
+SELECT * FROM course_books;
+
+3NF NORMALIZATION
+CREATE TABLE publishers (
+    Publisher TEXT PRIMARY KEY,
+    Publisher_address TEXT
+);
+
+INSERT INTO publishers (Publisher, Publisher_address)
+SELECT DISTINCT Publisher, Publisher_address
+FROM books;
+
+ALTER TABLE books DROP COLUMN Publisher_address;
+
+ALTER TABLE books
+ADD CONSTRAINT fk_publisher
+FOREIGN KEY (Publisher) REFERENCES publishers(Publisher);
+
+SELECT * FROM publishers;
+
+SELECT * FROM books;
+
+Last Verifications:
+
+SELECT c.Course_name, b.Title
+FROM courses c
+JOIN course_books cb ON c.CRN = cb.CRN
+JOIN books b ON cb.ISBN = b.ISBN;
+
+
+SELECT b.Title, p.Publisher, p.Publisher_address
+FROM books b
+JOIN publishers p ON b.Publisher = p.Publisher;
+
+
+SELECT c.Course_name, p.Publisher, p.Publisher_address
+FROM courses c
+JOIN course_books cb ON c.CRN = cb.CRN
+JOIN books b ON cb.ISBN = b.ISBN
+JOIN publishers p ON b.Publisher = p.Publisher;
+
+
